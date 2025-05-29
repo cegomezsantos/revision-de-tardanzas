@@ -22,7 +22,7 @@ if 'analisis_completos' not in st.session_state:
 # alguna lógica interna, inicialízalo también. Por ahora, lo omito si no es esencial.
 
 st.title("📝 Verificador de Tiempos de Calificación en Moodle")
-st.markdown(f"Conectado a: `{MOODLE_URL_BASE}`")
+# st.markdown(f"Conectado a: `{MOODLE_URL_BASE}`")
 
 # --- CREACIÓN DE PESTAÑAS ---
 tab1, tab2, tab3 = st.tabs(["1. Consultar Tareas y Fechas", "2. Analizar Tiempos", "3. Reporte de Retrasos"])
