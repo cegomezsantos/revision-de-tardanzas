@@ -1,0 +1,17 @@
+# Entorno Virtual
+.venv/
+venv/
+ENV/
+
+# Archivos de Python compilados y caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Archivos de configuración de IDEs
+.vscode/
+.idea/
+
+# Archivos de sistema operativo
+.DS_Store
+Thumbs.db
