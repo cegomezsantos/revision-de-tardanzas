@@ -1,3 +1,4 @@
+import streamlit as st # <--- IMPORTANTE: Añade esta línea
 import requests
 import json
 import urllib3
@@ -6,48 +7,54 @@ from datetime import datetime, timedelta
 # Suprimir warnings de SSL no verificado (NO RECOMENDADO PARA PRODUCCIÓN SIN VALIDACIÓN)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# --- CONFIGURACIÓN GLOBAL ---
-MOODLE_URL_BASE = "https://platform.ecala.net/webservice/rest/server.php" # ¡¡¡ACTUALIZA ESTO!!!
-MOODLE_TOKEN    = "7a5d0b50bfca46455a93ef404a608f81" # ¡¡¡ACTUALIZA ESTO!!!
+try:
+    # Intenta acceder a los secrets. Esto funcionará en Streamlit Cloud si están configurados,
+    # o localmente si tienes un archivo .streamlit/secrets.toml
+    MOODLE_URL_BASE = st.secrets["MOODLE_API_URL_BASE"]
+    MOODLE_TOKEN    = st.secrets["MOODLE_API_TOKEN"]
+
+except KeyError as e:
+    # Este bloque se ejecuta si el archivo secrets.toml existe (o los secrets están configurados en la nube)
+    # PERO una de las claves específicas (MOODLE_API_URL_BASE o MOODLE_API_TOKEN) no se encuentra.
+    error_message = (
+        f"ERROR CRÍTICO: La clave secreta '{e.args[0]}' no fue encontrada.\n"
+        "Por favor, asegúrate de que MOODLE_API_URL_BASE y MOODLE_API_TOKEN estén definidos:\n"
+        "- En Streamlit Community Cloud: En la configuración 'Secrets' de tu aplicación.\n"
+        "- Para desarrollo local: En un archivo llamado '.streamlit/secrets.toml' en la raíz de tu proyecto."
+    )
+    print(error_message)
+    # Detener la aplicación si faltan secretos cruciales
+    # MOODLE_URL_BASE = "ERROR_URL_NO_CONFIGURADA" # Para evitar NameError más adelante
+    # MOODLE_TOKEN = "ERROR_TOKEN_NO_CONFIGURADO" # Para evitar NameError más adelante
+    st.error(error_message)
+    st.stop() # Detiene la ejecución del script de Streamlit
 
 # --- FUNCIONES AUXILIARES ---
-def timestamp_to_datetime_str(timestamp, short_format=False): # Añadimos short_format
-    """Convierte un timestamp Unix a una cadena de fecha y hora legible."""
+# (tus funciones timestamp_to_datetime_str y calculate_time_difference se mantienen igual)
+def timestamp_to_datetime_str(timestamp, short_format=False):
     if timestamp and isinstance(timestamp, (int, float)) and timestamp > 0:
         dt_object = datetime.fromtimestamp(timestamp)
         if short_format:
-            return dt_object.strftime('%Y-%m-%d') # Formato corto
+            return dt_object.strftime('%Y-%m-%d')
         else:
-            return dt_object.strftime('%Y-%m-%d %H:%M:%S') # Formato largo
+            return dt_object.strftime('%Y-%m-%d %H:%M:%S')
     return "N/A"
 
 def calculate_time_difference(start_ts, end_ts):
-    """Calcula la diferencia entre dos timestamps y la devuelve como cadena formateada."""
     if start_ts and end_ts and start_ts > 0 and end_ts > 0:
         start_dt = datetime.fromtimestamp(start_ts)
         end_dt = datetime.fromtimestamp(end_ts)
-        if end_dt < start_dt:
-            return "Calificado antes del envío" 
-        
+        if end_dt < start_dt: return "Calificado antes del envío" 
         difference = end_dt - start_dt
-        
         days = difference.days
         hours, remainder = divmod(difference.seconds, 3600)
         minutes, _ = divmod(remainder, 60)
-        
         parts = []
-        if days > 0:
-            parts.append(f"{days} día{'s' if days != 1 else ''}")
-        if hours > 0:
-            parts.append(f"{hours} hora{'s' if hours != 1 else ''}")
-        if minutes > 0:
-            parts.append(f"{minutes} minuto{'s' if minutes != 1 else ''}")
-        
-        if not parts and difference.total_seconds() < 60 : # Si es menos de un minuto
-             return "Menos de un minuto"
-        elif not parts: # Si es exactamente 0 o un error muy pequeño
-             return "Mismo instante"
-
+        if days > 0: parts.append(f"{days} día{'s' if days != 1 else ''}")
+        if hours > 0: parts.append(f"{hours} hora{'s' if hours != 1 else ''}")
+        if minutes > 0: parts.append(f"{minutes} minuto{'s' if minutes != 1 else ''}")
+        if not parts and difference.total_seconds() < 60 : return "Menos de un minuto"
+        elif not parts: return "Mismo instante"
         return ", ".join(parts)
     return "N/A"
 
