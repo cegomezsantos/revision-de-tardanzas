@@ -6,6 +6,7 @@ from moodle_services import (
 )
 from datetime import datetime
 from etapa3_reporte_retrasos import display_reporte_retrasos
+import pandas as pd
 
 # --- Configuración de la Página Streamlit ---
 st.set_page_config(page_title="Verificador de Calificaciones Moodle", layout="wide")
@@ -21,8 +22,12 @@ if 'analisis_completos' not in st.session_state:
 # itera sobre los IDs seleccionados para mostrar la info. Si aún lo usas para
 # alguna lógica interna, inicialízalo también. Por ahora, lo omito si no es esencial.
 
-st.title("📝 Verificador de Tiempos de Calificación en Moodle")
-# st.markdown(f"Conectado a: `{MOODLE_URL_BASE}`")
+# Título e imagen en la misma línea usando columnas
+col1, col2 = st.columns([3, 1])
+with col1:
+    st.title("📝 Verificador de Tiempos de Calificación en Moodle")
+with col2:
+    st.image("smea1.png", width=200)
 
 # --- CREACIÓN DE PESTAÑAS ---
 tab1, tab2, tab3 = st.tabs(["1. Consultar Tareas y Fechas", "2. Analizar Tiempos", "3. Reporte de Retrasos"])
@@ -30,11 +35,28 @@ tab1, tab2, tab3 = st.tabs(["1. Consultar Tareas y Fechas", "2. Analizar Tiempos
 with tab1:
     st.header("Consultar Tareas por Curso(s) y Ver Fechas de Configuración")
     
+    # Opción 1: Ingresar IDs manualmente
+    st.subheader("Opción 1: Ingresar IDs de curso manualmente")
     course_ids_str_input = st.text_input(
         "Ingresa el ID del CURSO (o IDs separados por coma):",
         key="course_ids_text_input_tab1",
         placeholder="Ej: 33538, 33539, 12345"
     )
+
+    # Opción 2: Subir archivo CSV
+    st.subheader("Opción 2: Subir archivo CSV con IDs")
+    uploaded_file = st.file_uploader("Subir archivo CSV con IDs de actividades", type=['csv'])
+    
+    if uploaded_file is not None:
+        try:
+            df = pd.read_csv(uploaded_file)
+            if 'id' in df.columns:
+                course_ids_str_input = ','.join(map(str, df['id'].tolist()))
+                st.success(f"Se cargaron {len(df)} IDs desde el archivo CSV")
+            else:
+                st.error("El archivo CSV debe contener una columna llamada 'id'")
+        except Exception as e:
+            st.error(f"Error al leer el archivo CSV: {str(e)}")
 
     if st.button("📚 Consultar Tareas de Curso(s)", key="btn_consultar_cursos_tab1"):
         print("DEBUG APP.PY: Botón 'Consultar Tareas de Curso(s)' PRESIONADO")
@@ -60,7 +82,7 @@ with tab1:
                 all_retrieved_assignments_temp = []
                 has_errors_during_fetch = False
                 total_courses_to_query = len(valid_course_ids_to_query)
-                progress_bar = st.progress(0.0) # st.progress(0) si prefieres empezar en 0 entero
+                progress_bar = st.progress(0.0)
                 progress_text_area = st.empty()
                 
                 for i, course_id in enumerate(valid_course_ids_to_query):
@@ -80,10 +102,26 @@ with tab1:
                 if all_retrieved_assignments_temp:
                     st.success(f"Se encontraron {len(all_retrieved_assignments_temp)} tareas.")
                     st.session_state.all_assignments_from_courses = all_retrieved_assignments_temp
-                    for task in st.session_state.all_assignments_from_courses:
-                        course_id_of_task = task.get('courseid_original_request', 'Desconocido')
-                        display_str = f"{task.get('name', 'Tarea s/n')} (Curso ID: {course_id_of_task}, Tarea ID: {task.get('id', 'N/A')})"
-                        st.session_state.tasks_for_analysis_options_display[task['id']] = display_str
+                    
+                    # Crear DataFrame para mostrar resultados en tabla
+                    results_data = []
+                    for task in all_retrieved_assignments_temp:
+                        results_data.append({
+                            'ID Curso': task.get('courseid_original_request', 'N/A'),
+                            'ID Tarea': task.get('id', 'N/A'),
+                            'Nombre Tarea': task.get('name', 'N/A'),
+                            'Envíos desde': task.get('allowsubmissionsfromdate_str', 'N/A'),
+                            'Fecha Entrega': task.get('duedate_str', 'N/A'),
+                            'Fecha Límite': task.get('cutoffdate_str', 'N/A'),
+                            'Calificación esperada': task.get('gradingduedate_str', 'N/A')
+                        })
+                        st.session_state.tasks_for_analysis_options_display[task['id']] = f"{task.get('name', 'Tarea s/n')} (Curso ID: {task.get('courseid_original_request', 'Desconocido')}, Tarea ID: {task.get('id', 'N/A')})"
+                    
+                    # Mostrar resultados en tabla
+                    if results_data:
+                        st.subheader("Resultados de la consulta")
+                        df_results = pd.DataFrame(results_data)
+                        st.dataframe(df_results, use_container_width=True)
                 
                 if not all_retrieved_assignments_temp and not has_errors_during_fetch:
                      st.info("No se encontraron tareas en los cursos especificados o los cursos no tienen tareas.")
@@ -97,27 +135,46 @@ with tab1:
             for task in st.session_state.all_assignments_from_courses
         }
         if task_options_for_dates_view:
-            selected_task_ids_for_dates_view = st.multiselect(
-                "Selecciona UNA O MÁS tareas para ver sus fechas de configuración:",
-                options=list(task_options_for_dates_view.keys()),
-                format_func=lambda task_id: task_options_for_dates_view.get(task_id, f"ID: {task_id}"),
-                key="multiselect_view_assignment_dates_tab1"
-            )
+            # Nuevo: uploader de CSV para IDs de actividades
+            st.subheader("Subir CSV con IDs de actividades para ver fechas")
+            actividades_csv = st.file_uploader("Subir archivo CSV con IDs de actividades (columna 'id')", type=['csv'], key="csv_actividades_tab1")
+            selected_task_ids_for_dates_view = []
+            if actividades_csv is not None:
+                try:
+                    df_acts = pd.read_csv(actividades_csv)
+                    if 'id' in df_acts.columns:
+                        # Filtrar solo los IDs que existen en las opciones
+                        ids_csv = [int(i) for i in df_acts['id'].tolist() if int(i) in task_options_for_dates_view]
+                        selected_task_ids_for_dates_view = ids_csv
+                        st.success(f"Se seleccionaron {len(ids_csv)} actividades desde el archivo CSV")
+                    else:
+                        st.error("El archivo CSV debe tener una columna llamada 'id'")
+                except Exception as e:
+                    st.error(f"Error al leer el archivo CSV: {str(e)}")
+            else:
+                selected_task_ids_for_dates_view = st.multiselect(
+                    "Selecciona UNA O MÁS tareas para ver sus fechas de configuración:",
+                    options=list(task_options_for_dates_view.keys()),
+                    format_func=lambda task_id: task_options_for_dates_view.get(task_id, f"ID: {task_id}"),
+                    key="multiselect_view_assignment_dates_tab1"
+                )
+            # Mostrar resultados en tabla si hay IDs seleccionados
             if selected_task_ids_for_dates_view:
+                tabla_resultados = []
                 for task_id_to_show in selected_task_ids_for_dates_view:
                     tarea_info = next((task for task in st.session_state.all_assignments_from_courses if task['id'] == task_id_to_show), None)
                     if tarea_info:
-                        st.subheader(f"Fechas para Tarea: {tarea_info['name']} (ID: {tarea_info['id']})")
-                        def format_short_date(timestamp_str_long):
-                            if timestamp_str_long == "N/A" or not timestamp_str_long: return "N/A"
-                            try: return datetime.strptime(timestamp_str_long.split(" ")[0], '%Y-%m-%d').strftime('%Y-%m-%d')
-                            except ValueError: return timestamp_str_long
-                        col1, col2, col3, col4 = st.columns(4)
-                        col1.metric("Envíos desde", format_short_date(tarea_info.get('allowsubmissionsfromdate_str', "N/A")))
-                        col2.metric("Entrega", format_short_date(tarea_info.get('duedate_str', "N/A")))
-                        col3.metric("Límite", format_short_date(tarea_info.get('cutoffdate_str', "N/A")))
-                        col4.metric("Calificación esperada", format_short_date(tarea_info.get('gradingduedate_str', "N/A")))
-                        st.markdown("---")
+                        tabla_resultados.append({
+                            "Nombre Tarea": tarea_info['name'],
+                            "ID Tarea": tarea_info['id'],
+                            "Envíos desde": tarea_info.get('allowsubmissionsfromdate_str', "N/A"),
+                            "Entrega": tarea_info.get('duedate_str', "N/A"),
+                            "Límite": tarea_info.get('cutoffdate_str', "N/A"),
+                            "Calificación esperada": tarea_info.get('gradingduedate_str', "N/A")
+                        })
+                if tabla_resultados:
+                    st.subheader("Fechas de configuración de las actividades seleccionadas")
+                    st.dataframe(pd.DataFrame(tabla_resultados), use_container_width=True)
 
 with tab2:
     st.header("Analizar Tiempos de Calificación")
